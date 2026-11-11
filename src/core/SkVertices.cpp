@@ -10,6 +10,7 @@
 #include "include/private/SkDebug.h"
 #include "include/private/SkMalloc.h"
 #include "include/private/SkTo.h"
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkPicturePriv.h"
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkSafeMath.h"
@@ -31,6 +32,7 @@ static uint32_t next_id() {
     do {
         id = nextID.fetch_add(1, std::memory_order_relaxed);
     } while (id == SK_InvalidGenID);
+    SkRecordReplayAssert("[RUN-593-1969] SkVertices/next_id %d", id);
     return id;
 }
 

@@ -25,6 +25,7 @@
 #include "src/core/SkRecordDraw.h"
 #include "src/core/SkRecords.h"
 #include "src/core/SkResourceCache.h"
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkStreamPriv.h"
 #include "src/core/SkWriteBuffer.h"
 
@@ -68,7 +69,12 @@ SkPicture::SkPicture(const SkRect& cull,
 
 SkPicture::~SkPicture() {
     if (fAddedToCache.load()) {
-        SkResourceCache::PostPurgeSharedID(SkPicturePriv::MakeSharedID(fUniqueID));
+        if (SkRecordReplayAreEventsDisallowed() && SkRecordReplayEnterLeakMemory("SkPicture")) {
+            // What's cached for the picture stays cached: purging it here, at a point a replay
+            // doesn't reach at the same time, would change what later draws find.
+        } else {
+            SkResourceCache::PostPurgeSharedID(SkPicturePriv::MakeSharedID(fUniqueID));
+        }
     }
 }
 

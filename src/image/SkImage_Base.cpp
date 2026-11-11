@@ -5,6 +5,7 @@
  * found in the LICENSE file.
  */
 
+#include "src/core/SkRecordReplay.h"
 #include "src/image/SkImage_Base.h"
 
 #include "include/core/SkBitmap.h"
@@ -34,7 +35,11 @@ SkImage_Base::SkImage_Base(const SkImageInfo& info, uint32_t uniqueID,
 
 SkImage_Base::~SkImage_Base() {
     if (fAddedToRasterCache.load()) {
-        SkNotifyBitmapGenIDIsStale(this->uniqueID());
+        if (SkRecordReplayAreEventsDisallowed() && SkRecordReplayEnterLeakMemory("SkImage")) {
+            // See ~SkPicture.
+        } else {
+            SkNotifyBitmapGenIDIsStale(this->uniqueID());
+        }
     }
 }
 

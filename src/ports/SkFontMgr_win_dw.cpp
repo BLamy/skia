@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/core/SkRecordReplay.h"
 #include "src/utils/win/SkDWriteNTDDI_VERSION.h"
 
 #include "include/core/SkTypes.h"
@@ -203,6 +204,7 @@ struct ProtoDWriteTypeface {
 };
 
 static bool FindByDWriteFont(SkTypeface* cached, void* ctx) {
+    SkRecordReplayAssert("[RUN-2612-2639] FindByDWriteFont %u", cached->uniqueID());
     DWriteFontTypeface* cshFace = reinterpret_cast<DWriteFontTypeface*>(cached);
     ProtoDWriteTypeface* ctxFace = reinterpret_cast<ProtoDWriteTypeface*>(ctx);
 
@@ -361,6 +363,7 @@ sk_sp<SkFontStyleSet> SkFontMgr_DirectWrite::onCreateStyleSet(int index) const {
 
 sk_sp<SkFontStyleSet> SkFontMgr_DirectWrite::onMatchFamily(const char familyName[]) const {
     if (!familyName) {
+        SkRecordReplayAssert("[RUN-2116] SkFontMgr_DirectWrite::onMatchFamily #1");
         return nullptr;
     }
 
@@ -371,6 +374,7 @@ sk_sp<SkFontStyleSet> SkFontMgr_DirectWrite::onMatchFamily(const char familyName
     BOOL exists;
     HRNM(fFontCollection->FindFamilyName(dwFamilyName.get(), &index, &exists),
             "Failed while finding family by name.");
+    SkRecordReplayAssert("[RUN-2116] SkFontMgr_DirectWrite::onMatchFamily #2");
     if (!exists) {
         return nullptr;
     }

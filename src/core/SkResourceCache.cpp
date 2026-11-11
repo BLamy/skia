@@ -5,6 +5,7 @@
  * found in the LICENSE file.
  */
 
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkResourceCache.h"
 
 #include "include/core/SkString.h"
@@ -245,6 +246,7 @@ static int gPurgeHitCounter;
 #endif
 
 void SkResourceCache::purgeSharedID(uint64_t sharedID) {
+    SkRecordReplayAssert("[RUN-593-1783] SkResourceCache::purgeSharedID A %llu", sharedID);
     if (0 == sharedID) {
         return;
     }
@@ -455,6 +457,7 @@ size_t SkResourceCache::getEffectiveSingleAllocationByteLimit() const {
 void SkResourceCache::checkMessages() {
     TArray<PurgeSharedIDMessage> msgs;
     fPurgeSharedIDInbox.poll(&msgs);
+    SkRecordReplayAssert("[RUN-593-1783] SkResourceCache::checkMessages %d", (int)msgs.size());
     for (int i = 0; i < msgs.size(); ++i) {
         this->purgeSharedID(msgs[i].fSharedID);
     }
@@ -531,7 +534,15 @@ void SkResourceCache::VisitAll(Visitor visitor, void* context) {
 
 void SkResourceCache::PostPurgeSharedID(uint64_t sharedID) {
     if (sharedID) {
+        // A garbage collector can get here, where events are disallowed.
+        const bool passThrough = SkRecordReplayAreEventsDisallowed();
+        if (passThrough) {
+            SkRecordReplayBeginPassThroughEvents();
+        }
         SkMessageBus<PurgeSharedIDMessage, uint32_t>::Post(PurgeSharedIDMessage(sharedID));
+        if (passThrough) {
+            SkRecordReplayEndPassThroughEvents();
+        }
     }
 }
 

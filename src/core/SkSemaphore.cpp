@@ -59,7 +59,6 @@ bool has_replay_driver() {
 
 }  // namespace
 
-bool SkRecordReplayIsRecordingOrReplaying() { return has_replay_driver(); }
 
 int SkRecordReplayNewMutexId() {
     if (!has_replay_driver() || gReplayDriver.fAreEventsDisallowed() ||
@@ -73,7 +72,6 @@ void SkRecordReplayOrderedLock(int lock) { gReplayDriver.fOrderedLock(lock); }
 
 void SkRecordReplayOrderedUnlock(int lock) { gReplayDriver.fOrderedUnlock(lock); }
 #else
-bool SkRecordReplayIsRecordingOrReplaying() { return false; }
 int SkRecordReplayNewMutexId() { return 0; }
 void SkRecordReplayOrderedLock(int) {}
 void SkRecordReplayOrderedUnlock(int) {}

@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/core/SkRecordReplay.h"
 #include "src/gpu/ganesh/ClipStack.h"
 
 #include "include/core/SkAlphaType.h"
@@ -240,6 +241,7 @@ uint32_t next_gen_id() {
     do {
         id = nextID.fetch_add(1, std::memory_order_relaxed);
     } while (id < kFirstUnreservedGenID);
+    SkRecordReplayAssert("[RUN-593-1969] ClipStack/next_gen_id %u", id);
     return id;
 }
 

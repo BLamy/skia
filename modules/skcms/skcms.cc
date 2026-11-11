@@ -2479,6 +2479,10 @@ bool skcms_ApproximateCurve(const skcms_Curve* curve,
     return isfinitef_(*max_error);
 }
 
+#if defined(__x86_64__) && !defined(_WIN32)
+#include <dlfcn.h>
+#endif
+
 enum class CpuType { Baseline, HSW, SKX };
 
 static CpuType cpu_type() {
@@ -2492,6 +2496,13 @@ static CpuType cpu_type() {
         static const CpuType type = []{
             if (!sAllowRuntimeCPUDetection) {
                 return CpuType::Baseline;
+            }
+            // Replay: a replay can be carried on from a snapshot on another machine, whose CPU
+            // may not have what this one has.
+            if (void* is_replaying = dlsym(RTLD_DEFAULT, "RecordReplayIsReplaying")) {
+                if (reinterpret_cast<bool (*)()>(is_replaying)()) {
+                    return CpuType::Baseline;
+                }
             }
             // See http://www.sandpile.org/x86/cpuid.htm
 

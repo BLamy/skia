@@ -5,6 +5,7 @@
  * found in the LICENSE file.
  */
 
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkTypefaceCache.h"
 
 #include "include/core/SkFontStyle.h"
@@ -33,8 +34,11 @@ void SkTypefaceCache::add(sk_sp<SkTypeface> face) {
 }
 
 sk_sp<SkTypeface> SkTypefaceCache::findByProcAndRef(FindProc proc, void* ctx) const {
+    SkRecordReplayAssert("[RUN-2612-2639] SkTypefaceCache::findByProcAndRef A %d", (int)fTypefaces.size());
     for (const sk_sp<SkTypeface>& typeface : fTypefaces) {
         if (proc(typeface.get(), ctx)) {
+            SkRecordReplayAssert("[RUN-2612-2639] SkTypefaceCache::findByProcAndRef B %u",
+                                 typeface->uniqueID());
             return typeface;
         }
     }
@@ -44,6 +48,7 @@ sk_sp<SkTypeface> SkTypefaceCache::findByProcAndRef(FindProc proc, void* ctx) co
 void SkTypefaceCache::purge(int numToPurge) {
     int count = fTypefaces.size();
     int i = 0;
+    SkRecordReplayAssert("[RUN-2612-2639] SkTypefaceCache::purge %d %d", count, numToPurge);
     while (i < count) {
         if (fTypefaces[i]->unique()) {
             fTypefaces.removeShuffle(i);

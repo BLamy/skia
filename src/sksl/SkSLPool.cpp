@@ -9,18 +9,50 @@
 #include "src/sksl/SkSLMemoryPool.h"
 #include "src/sksl/SkSLPool.h"
 
+#ifndef SK_BUILD_FOR_WIN
+#include <pthread.h>
+#endif
+
 #define SkVLOG(...) // SkDEBUGF(__VA_ARGS__)
 
 namespace SkSL {
 
+#ifdef SK_BUILD_FOR_WIN
+
 static thread_local MemoryPool* sMemPool = nullptr;
 
-static MemoryPool* get_thread_local_memory_pool() {
+static MemoryPool*& memory_pool_location() {
     return sMemPool;
 }
 
+#else  // !SK_BUILD_FOR_WIN
+
+// Replay: a key the thread library keeps, where the compiler's own thread-local storage is set up
+// on a thread's first use at a point a replay doesn't reach the same way.
+static MemoryPool*& memory_pool_location() {
+    static pthread_key_t key;
+    static pthread_once_t once = PTHREAD_ONCE_INIT;
+    pthread_once(&once, [] {
+        int rv = pthread_key_create(&key, nullptr);
+        SkASSERT_RELEASE(rv == 0);
+    });
+
+    MemoryPool** v = (MemoryPool**)pthread_getspecific(key);
+    if (!v) {
+        v = new MemoryPool*(nullptr);
+        pthread_setspecific(key, v);
+    }
+    return *v;
+}
+
+#endif  // !SK_BUILD_FOR_WIN
+
+static MemoryPool* get_thread_local_memory_pool() {
+    return memory_pool_location();
+}
+
 static void set_thread_local_memory_pool(MemoryPool* memPool) {
-    sMemPool = memPool;
+    memory_pool_location() = memPool;
 }
 
 Pool::Pool() = default;

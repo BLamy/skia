@@ -14,6 +14,8 @@
 #include "src/core/SkNextID.h"
 #include "src/core/SkPixelRefPriv.h"
 
+#include "src/core/SkRecordReplay.h"
+
 #include <atomic>
 #include <utility>
 
@@ -25,6 +27,9 @@ uint32_t SkNextID::ImageID() {
     do {
         id = nextID.fetch_add(2, std::memory_order_relaxed);
     } while (id == 0);
+    // Threads take IDs in an order that isn't the same when replaying, and the IDs are keys of
+    // what's cached.
+    id = static_cast<uint32_t>(SkRecordReplayValue("SkNextID::ImageID", id));
     return id;
 }
 
@@ -92,7 +97,12 @@ void SkPixelRef::callGenIDChangeListeners() {
     if (this->genIDIsUnique()) {
         fGenIDChangeListeners.changed();
         if (fAddedToCache.exchange(false)) {
-            SkNotifyBitmapGenIDIsStale(this->getGenerationID());
+            if (SkRecordReplayAreEventsDisallowed() &&
+                SkRecordReplayEnterLeakMemory("SkPixelRef")) {
+                // See ~SkPicture.
+            } else {
+                SkNotifyBitmapGenIDIsStale(this->getGenerationID());
+            }
         }
     } else {
         // Listeners get at most one shot, so even though these weren't triggered or not, blow them

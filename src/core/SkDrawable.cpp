@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/core/SkRecordReplay.h"
 #include "include/core/SkDrawable.h"
 
 #include "include/core/SkCanvas.h"
@@ -26,6 +27,7 @@ static int32_t next_generation_id() {
     do {
         id = nextID.fetch_add(1, std::memory_order_relaxed);
     } while (id == 0);
+    SkRecordReplayAssert("[RUN-593-1969] next_generation_id %d", id);
     return id;
 }
 

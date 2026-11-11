@@ -5,6 +5,7 @@
  * found in the LICENSE file.
  */
 
+#include "src/core/SkRecordReplay.h"
 #include "src/gpu/graphite/GraphiteResourceKey.h"
 
 namespace skgpu::graphite {
@@ -13,6 +14,7 @@ ResourceType GraphiteResourceKey::GenerateResourceType() {
     static std::atomic<int32_t> nextType{ResourceKey::kInvalidDomain + 1};
 
     int32_t type = nextType.fetch_add(1, std::memory_order_relaxed);
+    SkRecordReplayAssert("[RUN-593-1969] GraphiteResourceKey::GenerateResourceType %d", type);
     if (type > SkTo<int32_t>(UINT16_MAX)) {
         SK_ABORT("Too many Graphite Resource Types");
     }

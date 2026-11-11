@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/core/SkRecordReplay.h"
 #include "src/gpu/ganesh/GrRenderTask.h"
 
 #include "include/core/SkRect.h"
@@ -28,6 +29,7 @@ uint32_t GrRenderTask::CreateUniqueID() {
     do {
         id = nextID.fetch_add(1, std::memory_order_relaxed);
     } while (id == SK_InvalidUniqueID);
+    SkRecordReplayAssert("[RUN-593-1969] GrRenderTask::CreateUniqueID %u", id);
     return id;
 }
 

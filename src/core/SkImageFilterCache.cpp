@@ -10,7 +10,10 @@
 #include "include/private/SkMutex.h"
 #include "include/private/SkOnce.h"
 #include "src/core/SkChecksum.h"
+#include "src/core/SkSpinlock.h"
 #include "src/core/SkImageFilterTypes.h"
+#include "src/core/SkImageFilter_Base.h"
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkSpecialImage.h"
 #include "src/core/SkTDynamicHash.h"
 #include "src/core/SkTHash.h"
@@ -25,6 +28,17 @@ using namespace skia_private;
 #else
   enum { kDefaultCacheSize = 128 * 1024 * 1024 };
 #endif
+
+static SkSpinlock gRecordReplayQueuedPurgesLock;
+static std::vector<uint64_t>* gRecordReplayQueuedPurges;
+
+void SkRecordReplayQueueImageFilterPurge(uint64_t uniqueID) {
+    SkAutoSpinlock lock(gRecordReplayQueuedPurgesLock);
+    if (!gRecordReplayQueuedPurges) {
+        gRecordReplayQueuedPurges = new std::vector<uint64_t>();
+    }
+    gRecordReplayQueuedPurges->push_back(uniqueID);
+}
 
 namespace {
 
@@ -71,10 +85,14 @@ public:
     void set(const Key& key, const SkImageFilter* filter,
              const skif::FilterResult& result) override {
         SkAutoMutexExclusive mutex(fMutex);
+        if (fIsGlobal && SkRecordReplayIsRecordingOrReplaying()) {
+            this->recordReplayPurgeQueued();
+        }
         if (Value* v = fLookup.find(key)) {
             this->removeInternal(v);
         }
         Value* v = new Value(key, result, filter);
+        SkRecordReplayAssert("CacheImpl::set %u", filter ? as_IFB(filter)->uniqueID() : 0);
         fLookup.add(v);
         fLRU.addToHead(v);
         fCurrentBytes += result.image() ? result.image()->getSize() : 0;
@@ -82,6 +100,9 @@ public:
             values->push_back(v);
         } else {
             fImageFilterValues.set(filter, {v});
+        }
+        if (filter && fIsGlobal) {
+            as_IFB(filter)->notifyAddedToCache();
         }
 
         while (fCurrentBytes > fMaxBytes) {
@@ -118,8 +139,41 @@ public:
         fImageFilterValues.remove(filter);
     }
 
+    void recordReplaySetGlobal() override { fIsGlobal = true; }
+
     SkDEBUGCODE(int count() const override { return fLookup.count(); })
 private:
+    void recordReplayPurgeQueued() {
+        std::vector<uint64_t> queued;
+        {
+            SkAutoSpinlock lock(gRecordReplayQueuedPurgesLock);
+            if (gRecordReplayQueuedPurges) {
+                queued.swap(*gRecordReplayQueuedPurges);
+            }
+        }
+        size_t count = SkRecordReplayValue("CacheImpl::recordReplayPurgeQueued count",
+                                           queued.size());
+        if (!count) {
+            return;
+        }
+        THashSet<uint64_t> ids;
+        for (size_t i = 0; i < count; i++) {
+            ids.add(SkRecordReplayValue("CacheImpl::recordReplayPurgeQueued id",
+                                        i < queued.size() ? queued[i] : 0));
+        }
+        // A replayed filter can still be alive when the recording's was purged, but nothing
+        // filters with it again.
+        std::vector<Value*> purged;
+        fLookup.foreach([&](Value* v) {
+            if (ids.contains(v->fKey.fUniqueID)) {
+                purged.push_back(v);
+            }
+        });
+        for (Value* v : purged) {
+            this->removeInternal(v);
+        }
+    }
+
     void removeInternal(Value* v) {
         if (v->fFilter) {
             if (auto* values = fImageFilterValues.find(v->fFilter)) {
@@ -147,6 +201,8 @@ private:
     THashMap<const SkImageFilter*, std::vector<Value*>> fImageFilterValues;
     size_t                                              fMaxBytes;
     size_t                                              fCurrentBytes;
+    // Only the Get() singleton is purged by ~SkImageFilter_Base, so only it marks its filters.
+    bool                                                fIsGlobal = false;
     mutable SkMutex                                     fMutex;
 };
 
@@ -163,6 +219,9 @@ sk_sp<SkImageFilterCache> SkImageFilterCache::Get(CreateIfNecessary createIfNece
     if (createIfNecessary == CreateIfNecessary::kNo) {
         return sk_ref_sp(cache);
     }
-    once([] { cache = SkImageFilterCache::Create(kDefaultCacheSize).release(); });
+    once([] {
+        cache = SkImageFilterCache::Create(kDefaultCacheSize).release();
+        cache->recordReplaySetGlobal();
+    });
     return sk_ref_sp(cache);
 }

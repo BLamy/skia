@@ -13,6 +13,7 @@
 #include "include/ports/SkFontConfigInterface.h"
 #include "include/ports/SkFontMgr_FontConfigInterface.h"
 #include "include/private/SkMutex.h"
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkFontDescriptor.h"
 #include "src/core/SkResourceCache.h"
 #include "src/core/SkTypefaceCache.h"
@@ -107,6 +108,18 @@ private:
 public:
     SkFontRequestCache(size_t maxSize) : fCachedResults(maxSize) {}
 
+    /** Any typeface already in the cache, or null if it's empty. */
+    sk_sp<SkTypeface> findAny() {
+        sk_sp<SkTypeface> face;
+        fCachedResults.visitAll([](const SkResourceCache::Rec& rec, void* context) {
+            sk_sp<SkTypeface>* out = static_cast<sk_sp<SkTypeface>*>(context);
+            if (!*out) {
+                *out = static_cast<const Result&>(rec).fFace;
+            }
+        }, &face);
+        return face;
+    }
+
     /** Takes ownership of request. It will be deleted when no longer needed. */
     void add(sk_sp<SkTypeface> face, Request* request) {
         fCachedResults.add(new Result(request, std::move(face)));
@@ -186,6 +199,12 @@ protected:
         sk_sp<SkTypeface> face = fCache.findAndRef(request.get());
         if (face) {
             return sk_sp<SkTypeface>(face);
+        }
+
+        // Replay: once a replay has left its recording, matchFamilyName below is a call to the
+        // font service that never completes. Any typeface already known is better than none.
+        if (SkRecordReplayHasDivergedFromRecording()) {
+            return fCache.findAny();
         }
 
         SkFontConfigInterface::FontIdentity identity;

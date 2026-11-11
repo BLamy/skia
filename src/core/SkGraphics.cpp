@@ -7,6 +7,8 @@
 
 #include "include/core/SkGraphics.h"
 
+#include "src/core/SkImageFilterCache.h"
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkContextPriv.h"
 #include "src/core/SkImageFilter_Base.h"
 #include "src/core/SkResourceCache.h"
@@ -16,6 +18,13 @@
 void SkGraphics::Init() {
     // SkGraphics::Init() must be thread-safe and idempotent.
     SkContexts::GetGlobalSkContext();
+
+    if (SkRecordReplayIsRecordingOrReplaying("eager-initialization", "SkImageFilterCache")) {
+        // The global image filter cache's mutex is an ordered lock, so the cache mustn't be made
+        // by whichever thread first rasterizes a filtered draw, which isn't the same thread when
+        // replaying.
+        SkImageFilterCache::Get();
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -31,6 +31,7 @@
 #include "include/private/SkFixed.h"
 #include "include/private/SkTemplates.h"
 #include "include/private/SkTo.h"
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkAutoMalloc.h"
 #include "src/core/SkColorData.h"
 #include "src/core/SkColorPriv.h"
@@ -141,6 +142,14 @@ SkScalerContext_Mac::SkScalerContext_Mac(SkTypeface_Mac& typeface,
         fInvTransform = fTransform;
     }
 
+    if (SkRecordReplayAreEventsUnavailable("divergent-update")) {
+        // What a replay does of its own, like repainting at a pause, can't make the calls to the
+        // system that an exact copy of the font takes. A plain copy at the font's own size does.
+        fCTFont.reset(CTFontCreateCopyWithAttributes(ctFont, 0, nullptr, nullptr));
+        fCGFont.reset(CTFontCopyGraphicsFont(ctFont, nullptr));
+        return;
+    }
+
     // The transform contains everything except the requested text size.
     // Some properties, like 'trak', are based on the optical text size.
     CGFloat textSize = SkScalarToCGFloat(scale.y());
@@ -149,8 +158,6 @@ SkScalerContext_Mac::SkScalerContext_Mac(SkTypeface_Mac& typeface,
     fCGFont.reset(CTFontCopyGraphicsFont(fCTFont.get(), nullptr));
 }
 
-// Whether this process is being recorded or replayed. In SkSemaphore.cpp, beside what orders SkMutex.
-SK_API bool SkRecordReplayIsRecordingOrReplaying();
 
 static int RoundSize(int dimension) {
     return SkNextPow2(dimension);

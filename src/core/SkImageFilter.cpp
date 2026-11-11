@@ -17,6 +17,7 @@
 #include "include/private/SkTArray.h"
 #include "include/private/SkTemplates.h"
 #include "src/core/SkImageFilterCache.h"
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkImageFilterTypes.h"
 #include "src/core/SkImageFilter_Base.h"
 #include "src/core/SkLocalMatrixImageFilter.h"
@@ -142,6 +143,9 @@ static uint64_t next_image_filter_unique_id() {
     do {
         id = nextID.fetch_add(1, std::memory_order_relaxed);
     } while (id == 0);
+    // Which thread makes a filter first isn't the same when replaying, and the ID is in the
+    // keys of what's cached.
+    id = SkRecordReplayValue("next_image_filter_unique_id", id);
     return id;
 }
 
@@ -161,6 +165,13 @@ SkImageFilter_Base::SkImageFilter_Base(sk_sp<SkImageFilter> const* inputs,
 }
 
 SkImageFilter_Base::~SkImageFilter_Base() {
+    if (SkRecordReplayIsRecordingOrReplaying()) {
+        // See SkRecordReplayQueueImageFilterPurge.
+        if (fAddedToCache.load()) {
+            SkRecordReplayQueueImageFilterPurge(fUniqueID);
+        }
+        return;
+    }
     SkImageFilterCache::Get()->purgeByImageFilter(this);
 }
 

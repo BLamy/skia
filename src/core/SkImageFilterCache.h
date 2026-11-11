@@ -77,7 +77,16 @@ public:
                      const skif::FilterResult& result) = 0;
     virtual void purge() = 0;
     virtual void purgeByImageFilter(const SkImageFilter*) = 0;
+    // Replay: marks this cache as the one ~SkImageFilter_Base purges from.
+    virtual void recordReplaySetGlobal() {}
     SkDEBUGCODE(virtual int count() const = 0;)
 };
+
+// The last reference to a filter can drop on any thread, including a garbage collector's while
+// events are disallowed, so which thread destroys it isn't recorded. While recording or replaying,
+// ~SkImageFilter_Base only queues the ID of a filter that was added to the global cache, and the
+// cache purges the queued IDs in set(), which is a recorded point: a replay purges the IDs the
+// recording did.
+void SkRecordReplayQueueImageFilterPurge(uint64_t uniqueID);
 
 #endif
