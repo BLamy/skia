@@ -8,6 +8,73 @@
 #include "include/private/SkSemaphore.h"
 
 #include "include/private/SkFeatures.h" // IWYU pragma: keep
+#include "include/private/SkMutex.h"
+
+#if defined(SK_BUILD_FOR_MAC) || defined(SK_BUILD_FOR_UNIX)
+#include <dlfcn.h>
+
+#include <atomic>
+
+namespace {
+
+// Replay's driver, found by name: it's loaded before this library in a process that's recorded,
+// and the engine answers for it in one that's replayed. Any other process has none.
+struct ReplayDriver {
+    int (*fCreateOrderedLock)(const char*);
+    void (*fOrderedLock)(int);
+    void (*fOrderedUnlock)(int);
+    bool (*fAreEventsDisallowed)();
+    bool (*fAreEventsPassedThrough)();
+};
+ReplayDriver gReplayDriver;
+// 0 before the first look, 1 when there's no driver, 2 when there is.
+std::atomic<int> gReplayDriverState{0};
+
+bool has_replay_driver() {
+    int state = gReplayDriverState.load(std::memory_order_acquire);
+    if (state == 0) {
+        ReplayDriver driver;
+        driver.fCreateOrderedLock = reinterpret_cast<int (*)(const char*)>(
+                dlsym(RTLD_DEFAULT, "RecordReplayCreateOrderedLock"));
+        driver.fOrderedLock =
+                reinterpret_cast<void (*)(int)>(dlsym(RTLD_DEFAULT, "RecordReplayOrderedLock"));
+        driver.fOrderedUnlock =
+                reinterpret_cast<void (*)(int)>(dlsym(RTLD_DEFAULT, "RecordReplayOrderedUnlock"));
+        driver.fAreEventsDisallowed = reinterpret_cast<bool (*)()>(
+                dlsym(RTLD_DEFAULT, "RecordReplayAreEventsDisallowed"));
+        driver.fAreEventsPassedThrough = reinterpret_cast<bool (*)()>(
+                dlsym(RTLD_DEFAULT, "RecordReplayAreEventsPassedThrough"));
+        bool found = dlsym(RTLD_DEFAULT, "RecordReplayAttach") && driver.fCreateOrderedLock &&
+                     driver.fOrderedLock && driver.fOrderedUnlock &&
+                     driver.fAreEventsDisallowed && driver.fAreEventsPassedThrough;
+        // Every thread that gets here finds the same thing, so whichever writes last is right.
+        if (found) {
+            gReplayDriver = driver;
+        }
+        state = found ? 2 : 1;
+        gReplayDriverState.store(state, std::memory_order_release);
+    }
+    return state == 2;
+}
+
+}  // namespace
+
+int SkRecordReplayNewMutexId() {
+    if (!has_replay_driver() || gReplayDriver.fAreEventsDisallowed() ||
+        gReplayDriver.fAreEventsPassedThrough()) {
+        return 0;
+    }
+    return gReplayDriver.fCreateOrderedLock("SkMutex");
+}
+
+void SkRecordReplayOrderedLock(int lock) { gReplayDriver.fOrderedLock(lock); }
+
+void SkRecordReplayOrderedUnlock(int lock) { gReplayDriver.fOrderedUnlock(lock); }
+#else
+int SkRecordReplayNewMutexId() { return 0; }
+void SkRecordReplayOrderedLock(int) {}
+void SkRecordReplayOrderedUnlock(int) {}
+#endif
 
 #if defined(SK_BUILD_FOR_MAC) || defined(SK_BUILD_FOR_IOS)
     #include <dispatch/dispatch.h>

@@ -23,23 +23,39 @@
  * go/cstyle#Disallowed_Stdlib
  */
 
+// Replay: a mutex made in a process that's being recorded or replayed, while its events are
+// recorded, is taken by threads in the same order when replaying as when recording. Skia's
+// caches are shared between threads, and what a thread finds in one decides what it does next.
+// Nonzero is the driver's ordered lock for the mutex, which then stands in for the semaphore.
+SK_API int SkRecordReplayNewMutexId();
+SK_API void SkRecordReplayOrderedLock(int lock);
+SK_API void SkRecordReplayOrderedUnlock(int lock);
+
 class SK_CAPABILITY("mutex") SkMutex {
 public:
-    constexpr SkMutex() = default;
+    SkMutex() : fOrderedLockId(SkRecordReplayNewMutexId()) {}
 
     ~SkMutex() {
         this->assertNotHeld();
     }
 
     void acquire() SK_ACQUIRE() {
-        fSemaphore.wait();
+        if (fOrderedLockId) {
+            SkRecordReplayOrderedLock(fOrderedLockId);
+        } else {
+            fSemaphore.wait();
+        }
         SkDEBUGCODE(fOwner = SkGetThreadID();)
     }
 
     void release() SK_RELEASE_CAPABILITY() {
         this->assertHeld();
         SkDEBUGCODE(fOwner = kIllegalThreadID;)
-        fSemaphore.signal();
+        if (fOrderedLockId) {
+            SkRecordReplayOrderedUnlock(fOrderedLockId);
+        } else {
+            fSemaphore.signal();
+        }
     }
 
     void assertHeld() SK_ASSERT_CAPABILITY(this) {
@@ -52,6 +68,7 @@ public:
 
 private:
     SkSemaphore fSemaphore{1};
+    const int fOrderedLockId;
     SkDEBUGCODE(SkThreadID fOwner{kIllegalThreadID};)
 };
 
