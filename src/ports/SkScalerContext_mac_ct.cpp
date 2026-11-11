@@ -149,6 +149,9 @@ SkScalerContext_Mac::SkScalerContext_Mac(SkTypeface_Mac& typeface,
     fCGFont.reset(CTFontCopyGraphicsFont(fCTFont.get(), nullptr));
 }
 
+// Whether this process is being recorded or replayed. In SkSemaphore.cpp, beside what orders SkMutex.
+SK_API bool SkRecordReplayIsRecordingOrReplaying();
+
 static int RoundSize(int dimension) {
     return SkNextPow2(dimension);
 }
@@ -209,12 +212,28 @@ CGRGBPixel* SkScalerContext_Mac::Offscreen::getCG(const SkScalerContext_Mac& con
     }
 
     size_t rowBytes = fSize.fWidth * sizeof(CGRGBPixel);
+    // Replay: a recording has in it every pixel of the bitmap a glyph is drawn into. Left to grow,
+    // the bitmap is as large as the largest glyph this context has drawn, which goes by what was
+    // drawn before, and that isn't the same on a replay whose debugger has laid text out at a
+    // pause. Recorded, it's the size this glyph rounds to, whatever came before.
+    const bool exactSize = SkRecordReplayIsRecordingOrReplaying();
+    const int exactWidth = RoundSize(glyph.width());
+    const int exactHeight = RoundSize(glyph.height());
+    if (exactSize && fCG && (fSize.fWidth != exactWidth || fSize.fHeight != exactHeight)) {
+        fCG.reset(nullptr);
+        fSize.fWidth = 0;
+        fSize.fHeight = 0;
+    }
     if (!fCG || fSize.fWidth < glyph.width() || fSize.fHeight < glyph.height()) {
         if (fSize.fWidth < glyph.width()) {
             fSize.fWidth = RoundSize(glyph.width());
         }
         if (fSize.fHeight < glyph.height()) {
             fSize.fHeight = RoundSize(glyph.height());
+        }
+        if (exactSize) {
+            fSize.fWidth = exactWidth;
+            fSize.fHeight = exactHeight;
         }
 
         rowBytes = fSize.fWidth * sizeof(CGRGBPixel);
