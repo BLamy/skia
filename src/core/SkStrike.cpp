@@ -29,6 +29,8 @@
 #include <optional>
 #include <utility>
 
+#include "src/core/SkRecordReplay.h"
+
 using namespace skglyph;
 
 static SkFontMetrics use_or_generate_metrics(
@@ -345,6 +347,10 @@ SkGlyph* SkStrike::glyph(SkPackedGlyphID packedGlyphID) {
 
 SkGlyphDigest SkStrike::digestFor(ActionType actionType, SkPackedGlyphID packedGlyphID) {
     SkGlyphDigest* digestPtr = fDigestForPackedGlyphID.find(packedGlyphID);
+
+    // https://linear.app/replay/issue/RUN-480
+    SkRecordReplayAssert("SkStrike::digestFor %u %d", packedGlyphID.value(), !!digestPtr);
+
     if (digestPtr != nullptr && digestPtr->actionFor(actionType) != GlyphAction::kUnset) {
         return *digestPtr;
     }

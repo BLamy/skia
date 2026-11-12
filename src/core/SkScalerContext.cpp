@@ -50,6 +50,8 @@
 #include <new>
 #include <utility>
 
+#include "src/core/SkRecordReplay.h"
+
 ///////////////////////////////////////////////////////////////////////////////
 
 namespace {
@@ -1356,6 +1358,14 @@ static size_t calculate_size_and_flatten(const SkScalerContextRec& rec,
 static void generate_descriptor(const SkScalerContextRec& rec,
                                 const SkBinaryWriteBuffer& effectBuffer,
                                 SkDescriptor* desc) {
+    // https://linear.app/replay/issue/RUN-845
+    SkRecordReplayAssert("[RUN-845] generate_descriptor %u %.2f %.2f %.2f Post2x2 %.2f %.2f %.2f %.2f %.2f %.2f Foreground %u %u",
+                         rec.fTypefaceID, rec.fTextSize, rec.fPreScaleX, rec.fPreSkewX,
+                         rec.fPost2x2[0][0], rec.fPost2x2[0][1], rec.fPost2x2[1][0], rec.fPost2x2[1][1], rec.fFrameWidth, rec.fMiterLimit,
+                         rec.fForegroundColor,
+                         // 108 also has the gammas and contrast, whose getters are gone in 158.
+                         rec.getLuminanceColor());
+
     desc->addEntry(kRec_SkDescriptorTag, sizeof(rec), &rec);
 
     if (effectBuffer.bytesWritten() > 0) {
