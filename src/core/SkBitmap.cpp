@@ -27,6 +27,7 @@
 #include "src/core/SkMaskFilterBase.h"
 #include "src/core/SkMipmap.h"
 #include "src/core/SkPixelRefPriv.h"
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkWritePixelsRec.h"
 #include "src/image/SkImage_Raster.h"
 #include "src/shaders/SkImageShader.h"
@@ -317,6 +318,9 @@ bool SkBitmap::installPixels(const SkImageInfo& requestedInfo, void* pixels, siz
         this->reset();
         return false;
     }
+    SkRecordReplayAssert("[RUN-593-1824] SkBitmap::installPixels A %d %d",
+                         nullptr == pixels,
+                         nullptr == releaseProc);
     if (nullptr == pixels) {
         invoke_release_proc(releaseProc, pixels, context);
         return true;    // we behaved as if they called setInfo()

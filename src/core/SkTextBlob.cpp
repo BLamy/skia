@@ -954,6 +954,7 @@ int SkTextBlob::getIntercepts(const SkScalar bounds[2], SkScalar intervals[],
         }
     }
 
+    SkRecordReplayAssert("[RUN-757] SkTextBlob::getIntercepts Done");
     return intervalCount;
 }
 
