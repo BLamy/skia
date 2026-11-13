@@ -25,6 +25,18 @@ void SkGraphics::Init() {
         // replaying.
         SkImageFilterCache::Get();
     }
+    if (SkRecordReplayIsRecordingOrReplaying("eager-initialization", "SkFontCaches")) {
+        // The same for the caches a glyph is drawn through. Each one's mutex is ordered only if
+        // it's made while events are recorded, and the first thread to draw text may get there
+        // with them disallowed: its cache is then shared unordered, typefaces get their IDs in
+        // another order on a replay, and a raster thread makes a strike its recording found.
+        SkStrikeCache::GlobalStrikeCache();
+        SkRecordReplayInitTypefaceCache();
+        SkRecordReplayInitMaskGammaCache();
+#if defined(SK_BUILD_FOR_MAC)
+        SkRecordReplayInitMacTypefaceCache();
+#endif
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////

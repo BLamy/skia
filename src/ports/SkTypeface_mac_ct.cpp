@@ -164,11 +164,21 @@ static bool find_by_CTFontRef(SkTypeface* cached, void* context) {
     return CFEqual(self, other);
 }
 
+// Replay: the cache's mutex is an ordered lock only if it's made while events are recorded, and a
+// typeface's ID comes from the order typefaces are made in. So it isn't made by whichever thread
+// first asks for a typeface: SkGraphics::Init makes it. 108 names it "SkTypeface_Mac::Make".
+static SkMutex& mac_typeface_cache_mutex() {
+    static SkMutex mutex;
+    return mutex;
+}
+
+void SkRecordReplayInitMacTypefaceCache() { (void)mac_typeface_cache_mutex(); }
+
 /** Creates a typeface, searching the cache if providedData is nullptr. */
 sk_sp<SkTypeface> SkTypeface_Mac::Make(SkUniqueCFRef<CTFontRef> font,
                                        OpszVariation opszVariation,
                                        std::unique_ptr<SkStreamAsset> providedData) {
-    static SkMutex gTFCacheMutex;
+    SkMutex& gTFCacheMutex = mac_typeface_cache_mutex();
     static SkTypefaceCache gTFCache;
 
     SkASSERT(font);
