@@ -5,6 +5,7 @@
  * found in the LICENSE file.
  */
 
+#include <algorithm>
 #include "src/core/SkRecordReplay.h"
 #include "src/core/SkTypefaceCache.h"
 
@@ -49,6 +50,24 @@ void SkTypefaceCache::purge(int numToPurge) {
     int count = fTypefaces.size();
     int i = 0;
     SkRecordReplayAssert("[RUN-2612-2639] SkTypefaceCache::purge %d %d", count, numToPurge);
+    // Replay: whether the cache holds the only reference to a typeface depends on what the
+    // collector has freed, in a Chromium whose font data is collected (108's was reference
+    // counted), and that isn't the same on a replay. The cache then differs, and with it whether a
+    // font finds its typeface here or has one made, which asks the system. So the oldest entries
+    // go, whoever else holds them: a typeface still in use is only made again if asked for.
+    if (SkRecordReplayIsRecordingOrReplaying()) {
+        int purged = std::min(numToPurge, count);
+        if (purged <= 0) {
+            return;
+        }
+        skia_private::TArray<sk_sp<SkTypeface>> kept;
+        kept.reserve(count - purged);
+        for (int j = purged; j < count; j++) {
+            kept.push_back(std::move(fTypefaces[j]));
+        }
+        fTypefaces = std::move(kept);
+        return;
+    }
     while (i < count) {
         if (fTypefaces[i]->unique()) {
             fTypefaces.removeShuffle(i);
