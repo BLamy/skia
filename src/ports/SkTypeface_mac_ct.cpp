@@ -40,6 +40,7 @@
 #include "include/private/SkTPin.h"
 #include "include/private/SkTemplates.h"
 #include "include/private/SkTo.h"
+#include "src/core/SkRecordReplay.h"
 #include "src/core/SkAdvancedTypefaceMetrics.h"
 #include "src/core/SkEndian.h"
 #include "src/core/SkFontDescriptor.h"
@@ -157,9 +158,33 @@ CTFontRef SkTypeface_GetCTFontRef(const SkTypeface* face) {
     return face ? (CTFontRef)face->internal_private_getCTFontRef() : nullptr;
 }
 
+// Replay: every CoreFoundation call is recorded, with asserts about its arguments, and a lookup that
+// misses makes one CFEqual for each typeface the cache holds (1024 of them). A page that measures
+// text at thousands of sizes spent nearly all its time recording those. Equal fonts have equal
+// hashes, so the font's hash is asked for once and each cached typeface's once, and CFEqual is left
+// for the typefaces whose hash matches. The answer is the same as without.
+struct FindByCTFontRefContext {
+    CTFontRef fFont;
+    bool fUseHash;
+    CFHashCode fHash;
+};
+
 static bool find_by_CTFontRef(SkTypeface* cached, void* context) {
-    CTFontRef self = (CTFontRef)context;
+    const FindByCTFontRefContext* find = (const FindByCTFontRefContext*)context;
+    CTFontRef self = find->fFont;
     CTFontRef other = (CTFontRef)cached->internal_private_getCTFontRef();
+
+    if (find->fUseHash) {
+        // Only SkTypeface_Mac::Make adds to the cache this is called for.
+        const SkTypeface_Mac* mac = static_cast<const SkTypeface_Mac*>(cached);
+        if (!mac->fRecordReplayHasFontHash) {
+            mac->fRecordReplayFontHash = CFHash(other);
+            mac->fRecordReplayHasFontHash = true;
+        }
+        if (mac->fRecordReplayFontHash != find->fHash) {
+            return false;
+        }
+    }
 
     return CFEqual(self, other);
 }
@@ -199,7 +224,11 @@ sk_sp<SkTypeface> SkTypeface_Mac::Make(SkUniqueCFRef<CTFontRef> font,
     }
 
     SkAutoMutexExclusive ama(gTFCacheMutex);
-    sk_sp<SkTypeface> face = gTFCache.findByProcAndRef(find_by_CTFontRef, (void*)font.get());
+    FindByCTFontRefContext find = {font.get(), SkRecordReplayIsRecordingOrReplaying(), 0};
+    if (find.fUseHash) {
+        find.fHash = CFHash(font.get());
+    }
+    sk_sp<SkTypeface> face = gTFCache.findByProcAndRef(find_by_CTFontRef, (void*)&find);
     if (!face) {
         face = makeTypeface();
         if (face) {

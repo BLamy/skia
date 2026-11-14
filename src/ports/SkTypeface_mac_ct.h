@@ -89,6 +89,11 @@ public:
 
     SkUniqueCFRef<CTFontRef> fFontRef;
     const OpszVariation fOpszVariation;
+
+    // Replay: the font's CFHash, once the typeface cache has asked for it. See find_by_CTFontRef.
+    // The cache's mutex guards both.
+    mutable bool fRecordReplayHasFontHash = false;
+    mutable CFHashCode fRecordReplayFontHash = 0;
     const bool fHasColorGlyphs;
 
     /**
